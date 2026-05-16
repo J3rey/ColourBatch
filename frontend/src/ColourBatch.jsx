@@ -1461,6 +1461,7 @@ export default function ColourBatchArtifact() {
   const [lightboxImageId, setLightboxImageId] = useState(null);
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState({ current: 0, total: 0 });
+  const [pendingShare, setPendingShare] = useState(null);
   const [visibleImageIds, setVisibleImageIds] = useState(() => new Set());
   const [presetPreviews, setPresetPreviews] = useState({});
   const [toast, setToast] = useState('');
@@ -1748,24 +1749,18 @@ export default function ColourBatchArtifact() {
       && typeof navigator.share === 'function'
       && navigator.canShare({ files: shareFiles });
 
+    setIsExporting(false);
+
     if (canShareFiles) {
-      try {
-        await navigator.share({
-          files: shareFiles,
-          title: 'ColourBatch export',
-          text: `ColourBatch — ${activePreset.name || activePreset.id}`,
-        });
-      } catch (error) {
-        if (error?.name !== 'AbortError') {
-          console.error('ColourBatch share failed, falling back to downloads', error);
-          graded.forEach(({ fileName, dataUrl }) => downloadDataUrl(dataUrl, fileName));
-        }
-      }
-    } else {
-      graded.forEach(({ fileName, dataUrl }) => downloadDataUrl(dataUrl, fileName));
+      setPendingShare({
+        files: shareFiles,
+        graded,
+        presetName: activePreset.name || activePreset.id,
+      });
+      return;
     }
 
-    setIsExporting(false);
+    graded.forEach(({ fileName, dataUrl }) => downloadDataUrl(dataUrl, fileName));
 
     if (failed.length) {
       const failedNames = failed.slice(0, 3).join(', ');
@@ -1776,6 +1771,28 @@ export default function ColourBatchArtifact() {
 
     showToast(`Exported ${targets.length} image${targets.length === 1 ? '' : 's'}.`);
   }, [activePreset, getGradingEngine, isExporting, showToast]);
+
+  const handleSharePending = useCallback(async () => {
+    if (!pendingShare) return;
+    try {
+      await navigator.share({
+        files: pendingShare.files,
+        title: 'ColourBatch export',
+        text: `ColourBatch — ${pendingShare.presetName}`,
+      });
+      setPendingShare(null);
+      showToast(`Exported ${pendingShare.files.length} image${pendingShare.files.length === 1 ? '' : 's'}.`);
+    } catch (error) {
+      if (error?.name === 'AbortError') return;
+      console.error('ColourBatch share failed, falling back to downloads', error);
+      pendingShare.graded.forEach(({ fileName, dataUrl }) => downloadDataUrl(dataUrl, fileName));
+      setPendingShare(null);
+    }
+  }, [pendingShare, showToast]);
+
+  const handleDismissPending = useCallback(() => {
+    setPendingShare(null);
+  }, []);
 
   return (
     <div className="flex min-h-[100dvh] touch-manipulation items-stretch justify-center bg-[#1A1814] font-['Space_Grotesk',system-ui,-apple-system,sans-serif] text-[#F2EFE9] sm:items-center sm:p-6">
@@ -1873,6 +1890,30 @@ export default function ColourBatchArtifact() {
                 Exporting {exportProgress.current}/{exportProgress.total}...
               </MonoLabel>
             )}
+            {pendingShare ? (
+              <div className="grid grid-cols-[1fr_auto] gap-1.5">
+                <button
+                  type="button"
+                  onClick={handleSharePending}
+                  className="flex min-h-[64px] touch-manipulation flex-col items-start bg-[#0D0D0C] px-3 py-3 text-[#F2EFE9] transition active:scale-[0.98]"
+                >
+                  <span className="font-['Space_Grotesk',system-ui] text-[15px] font-medium leading-none tracking-normal">
+                    Save to Photos
+                  </span>
+                  <MonoLabel size={9} color="currentColor" className="mt-2 opacity-70">
+                    {String(pendingShare.files.length).padStart(2, '0')} READY · TAP TO SAVE
+                  </MonoLabel>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDismissPending}
+                  aria-label="Cancel export"
+                  className="flex min-h-[64px] w-[64px] touch-manipulation items-center justify-center bg-[rgba(13,13,12,0.06)] text-[#0D0D0C] transition active:scale-[0.98]"
+                >
+                  <MonoLabel size={10} color="currentColor">CANCEL</MonoLabel>
+                </button>
+              </div>
+            ) : (
             <div className="grid grid-cols-2 gap-1.5">
               <button
                 type="button"
@@ -1901,6 +1942,7 @@ export default function ColourBatchArtifact() {
                 </MonoLabel>
               </button>
             </div>
+            )}
           </div>
 
           <Toast message={toast} />
