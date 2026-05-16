@@ -32,6 +32,8 @@ const NEUTRAL_ADJUSTMENTS = {
   lift: { r: 0, g: 0, b: 0 },
   gain: { r: 1, g: 1, b: 1 },
   vignette: 0,
+  grainAmount: 0,
+  grainSize: 1,
 };
 
 const PRESETS = [
@@ -67,20 +69,6 @@ const PRESETS = [
     },
   },
   {
-    id: 'fuji-velvia',
-    name: 'Fuji Velvia',
-    category: 'Film',
-    adjustments: {
-      contrast: 1.25,
-      saturation: 1.3,
-      vibrance: 0.3,
-      temperature: 100,
-      shadows: -0.05,
-      gamma: 0.95,
-      gain: { r: 1, g: 1.05, b: 1.08 },
-    },
-  },
-  {
     id: 'cross-process',
     name: 'Cross Process',
     category: 'Film',
@@ -95,34 +83,6 @@ const PRESETS = [
     },
   },
   {
-    id: 'golden-hour',
-    name: 'Golden Hour',
-    category: 'Mood',
-    adjustments: {
-      brightness: 0.1,
-      contrast: 1.05,
-      saturation: 1.05,
-      temperature: 1200,
-      highlights: 0.15,
-      gamma: 1.05,
-      gain: { r: 1.1, g: 1, b: 0.85 },
-    },
-  },
-  {
-    id: 'moody-noir',
-    name: 'Moody Noir',
-    category: 'Mood',
-    adjustments: {
-      brightness: -0.05,
-      contrast: 1.3,
-      saturation: 0.3,
-      temperature: -400,
-      shadows: -0.1,
-      vignette: 0.5,
-      lift: { r: 0, g: 0, b: 0.04 },
-    },
-  },
-  {
     id: 'faded-vintage',
     name: 'Faded Vintage',
     category: 'Mood',
@@ -134,45 +94,6 @@ const PRESETS = [
       shadows: 0.12,
       gamma: 1.1,
       lift: { r: 0.04, g: 0.03, b: 0.02 },
-    },
-  },
-  {
-    id: 'dreamy-pastel',
-    name: 'Dreamy Pastel',
-    category: 'Mood',
-    adjustments: {
-      brightness: 0.12,
-      contrast: 0.9,
-      saturation: 0.75,
-      temperature: 200,
-      highlights: 0.1,
-      gamma: 1.08,
-      lift: { r: 0.03, g: 0.02, b: 0.03 },
-    },
-  },
-  {
-    id: 'bright-airy',
-    name: 'Bright & Airy',
-    category: 'Clean',
-    adjustments: {
-      brightness: 0.15,
-      contrast: 0.95,
-      saturation: 0.9,
-      temperature: 200,
-      highlights: 0.1,
-      gamma: 1.05,
-    },
-  },
-  {
-    id: 'high-contrast-bw',
-    name: 'High Contrast B&W',
-    category: 'Clean',
-    adjustments: {
-      contrast: 1.4,
-      saturation: 0,
-      gamma: 0.9,
-      shadows: -0.05,
-      highlights: 0.1,
     },
   },
   {
@@ -198,6 +119,146 @@ const PRESETS = [
       gamma: 0.95,
       highlights: 0.05,
       shadows: -0.02,
+    },
+  },
+  {
+    id: 'film-grain-light',
+    name: 'Film Grain Light',
+    category: 'Film',
+    description: 'subtle film grain over a clean neutral grade',
+    adjustments: {
+      contrast: 1.05,
+      saturation: 0.95,
+      temperature: 100,
+      gamma: 1.02,
+      grainAmount: 0.04,
+      grainSize: 1,
+    },
+  },
+  {
+    id: 'film-grain-heavy',
+    name: 'Film Grain Heavy',
+    category: 'Film',
+    description: 'pronounced grain with a warm slightly lifted base, feels like pushed 35mm film',
+    adjustments: {
+      contrast: 1.1,
+      saturation: 0.85,
+      temperature: 200,
+      shadows: 0.05,
+      gamma: 1.05,
+      lift: { r: 0.02, g: 0.02, b: 0.02 },
+      grainAmount: 0.09,
+      grainSize: 1.5,
+    },
+  },
+  {
+    id: 'tokyo-night',
+    name: 'Tokyo Night',
+    category: 'Mood',
+    description: 'cool blue shadows, slightly cyan highlights, high contrast -- cyberpunk street photography feel',
+    adjustments: {
+      brightness: -0.03,
+      contrast: 1.2,
+      saturation: 1.1,
+      temperature: -600,
+      tint: -0.05,
+      highlights: 0.15,
+      shadows: -0.08,
+      vibrance: 0.3,
+      lift: { r: 0, g: 0, b: 0.08 },
+      gain: { r: 1, g: 0.95, b: 1.1 },
+      vignette: 0.35,
+    },
+  },
+  {
+    id: 'matte-brown',
+    name: 'Matte Brown',
+    category: 'Mood',
+    description: 'warm matte finish with lifted shadows and a faded brown tone, popular in lifestyle and travel photography',
+    adjustments: {
+      brightness: 0.03,
+      contrast: 0.9,
+      saturation: 0.8,
+      temperature: 400,
+      shadows: 0.1,
+      highlights: -0.05,
+      gamma: 1.08,
+      lift: { r: 0.05, g: 0.04, b: 0.02 },
+      gain: { r: 1, g: 0.97, b: 0.9 },
+      vignette: 0.2,
+    },
+  },
+  {
+    id: 'hyper-real',
+    name: 'Hyper Real',
+    category: 'Clean',
+    description: 'punchy and oversaturated, colours pop hard -- social media product and landscape look',
+    adjustments: {
+      brightness: 0.02,
+      contrast: 1.2,
+      saturation: 1.25,
+      vibrance: 0.35,
+      temperature: 50,
+      shadows: -0.05,
+      highlights: 0.08,
+      gamma: 0.95,
+      gain: { r: 1.02, g: 1.05, b: 1 },
+    },
+  },
+  {
+    id: 'seoul-soft',
+    name: 'Seoul Soft',
+    category: 'Mood',
+    description: 'soft pastel-adjacent skin-friendly grade, popular in Korean street and portrait photography',
+    adjustments: {
+      brightness: 0.08,
+      contrast: 0.92,
+      saturation: 0.88,
+      temperature: 150,
+      tint: 0.03,
+      shadows: 0.07,
+      highlights: 0.05,
+      gamma: 1.06,
+      lift: { r: 0.03, g: 0.02, b: 0.03 },
+      vibrance: 0.15,
+    },
+  },
+  {
+    id: 'bleach-bypass',
+    name: 'Bleach Bypass',
+    category: 'Film',
+    description: 'high contrast desaturated look, silver retention film process -- editorial and fashion feel',
+    adjustments: {
+      brightness: -0.02,
+      contrast: 1.35,
+      saturation: 0.55,
+      temperature: -100,
+      shadows: -0.08,
+      highlights: 0.12,
+      gamma: 0.93,
+      lift: { r: 0.01, g: 0.01, b: 0.02 },
+      vignette: 0.25,
+    },
+  },
+  {
+    id: 'sunset-film',
+    name: 'Sunset Film',
+    category: 'Film',
+    description: 'warm golden tones with light grain, feels like a summer disposable camera shot',
+    adjustments: {
+      brightness: 0.06,
+      contrast: 1.08,
+      saturation: 1,
+      temperature: 800,
+      tint: -0.02,
+      highlights: 0.12,
+      shadows: 0.04,
+      gamma: 1.03,
+      lift: { r: 0.04, g: 0.02, b: 0 },
+      gain: { r: 1.08, g: 0.98, b: 0.88 },
+      vignette: 0.2,
+      grainAmount: 0.03,
+      grainSize: 1,
     },
   },
 ];
@@ -268,19 +329,10 @@ function IOSStatusBar({ dark = false }) {
   );
 }
 
-function IOSDevice({ children }) {
+function AppShell({ children }) {
   return (
-    <div className="relative h-[874px] w-[402px] overflow-hidden rounded-[48px] bg-[#F2F2F7] font-[-apple-system,system-ui,sans-serif] shadow-[0_40px_80px_rgba(0,0,0,0.18),0_0_0_1px_rgba(0,0,0,0.12)] antialiased">
-      <div className="absolute left-1/2 top-[11px] z-50 h-[37px] w-[126px] -translate-x-1/2 rounded-3xl bg-black" />
-      <div className="absolute inset-x-0 top-0 z-10">
-        <IOSStatusBar />
-      </div>
-      <div className="flex h-full flex-col">
-        <div className="min-h-0 flex-1 overflow-auto">{children}</div>
-      </div>
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[60] flex h-[34px] items-end justify-center pb-2">
-        <div className="h-[5px] w-[139px] rounded-full bg-black/25" />
-      </div>
+    <div className="relative h-[100dvh] w-full max-w-[430px] overflow-hidden bg-[#F2EFE9] font-[-apple-system,system-ui,sans-serif] shadow-[0_24px_60px_rgba(0,0,0,0.18)] antialiased sm:h-[874px] sm:rounded-[34px]">
+      {children}
     </div>
   );
 }
@@ -313,12 +365,15 @@ function CornerBrackets({ color = tokens.accent }) {
 
 function Header({ imagesCount, selectedCount, onAddMore }) {
   return (
-    <div className="relative border-b border-[rgba(13,13,12,0.12)] bg-[#F2EFE9] px-[18px] pb-2.5 pt-[52px]">
+    <div
+      className="relative z-20 border-b border-[rgba(13,13,12,0.12)] bg-[#F2EFE9] px-[18px] pb-2.5"
+      style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 18px)' }}
+    >
       <div className="flex items-end justify-between">
         <button
           type="button"
           onClick={imagesCount ? onAddMore : undefined}
-          className="appearance-none bg-transparent p-0 text-[#0D0D0C] disabled:cursor-default disabled:text-[#A09A8E]"
+          className="min-h-8 appearance-none bg-transparent p-0 text-[#0D0D0C] disabled:cursor-default disabled:text-[#A09A8E]"
           disabled={!imagesCount}
         >
           <MonoLabel size={10}>{imagesCount ? '+ ADD MORE' : 'COLOURBATCH'}</MonoLabel>
@@ -346,7 +401,8 @@ function Toast({ message }) {
     <div
       role="status"
       aria-live="polite"
-      className="absolute inset-x-[18px] bottom-[86px] z-40 border border-[rgba(13,13,12,0.18)] bg-[#0D0D0C] px-3 py-2 text-[#F2EFE9] shadow-[0_12px_28px_rgba(0,0,0,0.18)]"
+      className="absolute inset-x-[18px] z-40 border border-[rgba(13,13,12,0.18)] bg-[#0D0D0C] px-3 py-2 text-[#F2EFE9] shadow-[0_12px_28px_rgba(0,0,0,0.18)]"
+      style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 92px)' }}
     >
       <MonoLabel size={9} color="#F2EFE9">
         {message}
@@ -418,10 +474,10 @@ async function createProxy(file) {
 
 const VERTEX_SHADER_SOURCE = `#version 300 es
 in vec2 aPosition;
-out vec2 vUv;
+out vec2 vTexCoord;
 
 void main() {
-  vUv = aPosition * 0.5 + 0.5;
+  vTexCoord = aPosition * 0.5 + 0.5;
   gl_Position = vec4(aPosition, 0.0, 1.0);
 }
 `;
@@ -443,12 +499,19 @@ uniform float uGamma;
 uniform vec3 uLift;
 uniform vec3 uGain;
 uniform float uVignette;
+uniform float u_grain_amount;
+uniform float u_grain_size;
+uniform float u_grain_seed;
 
-in vec2 vUv;
+in vec2 vTexCoord;
 out vec4 outColor;
 
 float luminance(vec3 color) {
   return dot(color, vec3(0.2126, 0.7152, 0.0722));
+}
+
+float hash(vec2 p) {
+  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
 }
 
 vec3 rgbToHsl(vec3 color) {
@@ -495,7 +558,7 @@ vec3 hslToRgb(vec3 hsl) {
 }
 
 void main() {
-  vec4 texel = texture(uImage, vUv);
+  vec4 texel = texture(uImage, vTexCoord);
   vec3 color = texel.rgb;
   float lum = luminance(color);
   float shadowMask = 1.0 - smoothstep(0.0, 0.55, lum);
@@ -536,12 +599,17 @@ void main() {
   color += uLift * shadowMask;
   color *= mix(vec3(1.0), uGain, highlightMask);
 
-  float distanceFromCentre = distance(vUv, vec2(0.5));
+  float distanceFromCentre = distance(vTexCoord, vec2(0.5));
   float vignetteMask = smoothstep(0.35, 0.78, distanceFromCentre);
   color *= 1.0 - vignetteMask * uVignette;
 
   color = clamp(color, 0.0, 1.0);
   color = pow(color, vec3(1.0 / max(uGamma, 0.001)));
+  color = clamp(color, 0.0, 1.0);
+
+  float grain = hash(vTexCoord * u_grain_size + u_grain_seed) - 0.5;
+  color.rgb += grain * u_grain_amount;
+  color.rgb = clamp(color.rgb, 0.0, 1.0);
 
   outColor = vec4(clamp(color, 0.0, 1.0), texel.a);
 }
@@ -633,6 +701,9 @@ class WebGLGradingEngine {
       'uLift',
       'uGain',
       'uVignette',
+      'u_grain_amount',
+      'u_grain_size',
+      'u_grain_seed',
     ];
 
     return Object.fromEntries(names.map((name) => [name, this.gl.getUniformLocation(this.program, name)]));
@@ -720,9 +791,10 @@ class WebGLGradingEngine {
     this.textureCache.delete(cacheKey);
   }
 
-  drawTexture(texture, width, height, preset, type = 'image/jpeg', quality = 0.9) {
+  drawTexture(texture, width, height, preset, type = 'image/jpeg', quality = 0.9, options = {}) {
     const gl = this.gl;
     const adjustments = normalisePreset(preset || PRESETS[0]);
+    const grainSeed = typeof options.grainSeed === 'number' ? options.grainSeed : Math.random();
 
     this.canvas.width = width;
     this.canvas.height = height;
@@ -730,7 +802,7 @@ class WebGLGradingEngine {
     gl.useProgram(this.program);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, texture);
-    this.setUniforms(adjustments);
+    this.setUniforms(adjustments, grainSeed);
 
     const position = gl.getAttribLocation(this.program, 'aPosition');
     gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
@@ -741,7 +813,7 @@ class WebGLGradingEngine {
     return this.canvas.toDataURL(type, quality);
   }
 
-  drawImage(img, preset, type = 'image/jpeg', quality = 0.9) {
+  drawImage(img, preset, type = 'image/jpeg', quality = 0.9, options = {}) {
     const gl = this.gl;
     const texture = this.createTexture();
     const width = img.naturalWidth || img.width;
@@ -749,13 +821,13 @@ class WebGLGradingEngine {
 
     try {
       this.uploadImageToTexture(texture, img);
-      return this.drawTexture(texture, width, height, preset, type, quality);
+      return this.drawTexture(texture, width, height, preset, type, quality, options);
     } finally {
       gl.deleteTexture(texture);
     }
   }
 
-  setUniforms(adjustments) {
+  setUniforms(adjustments, grainSeed) {
     const gl = this.gl;
     gl.uniform1i(this.uniforms.uImage, 0);
     gl.uniform1f(this.uniforms.uBrightness, adjustments.brightness);
@@ -771,6 +843,9 @@ class WebGLGradingEngine {
     gl.uniform3f(this.uniforms.uLift, adjustments.lift.r, adjustments.lift.g, adjustments.lift.b);
     gl.uniform3f(this.uniforms.uGain, adjustments.gain.r, adjustments.gain.g, adjustments.gain.b);
     gl.uniform1f(this.uniforms.uVignette, adjustments.vignette);
+    gl.uniform1f(this.uniforms.u_grain_amount, adjustments.grainAmount);
+    gl.uniform1f(this.uniforms.u_grain_size, adjustments.grainSize);
+    gl.uniform1f(this.uniforms.u_grain_seed, grainSeed);
   }
 
   async grade(dataUrl, preset, options = {}) {
@@ -778,21 +853,21 @@ class WebGLGradingEngine {
 
     const cached = this.getCachedTexture(options.cacheKey);
     if (cached) {
-      return this.drawTexture(cached.texture, cached.width, cached.height, preset, 'image/jpeg', 0.9);
+      return this.drawTexture(cached.texture, cached.width, cached.height, preset, 'image/jpeg', 0.9, options);
     }
 
     const img = await this.loadDataUrl(dataUrl);
     if (options.cacheKey) {
       const entry = this.cacheTexture(options.cacheKey, img, options.protectedKeys);
-      return this.drawTexture(entry.texture, entry.width, entry.height, preset, 'image/jpeg', 0.9);
+      return this.drawTexture(entry.texture, entry.width, entry.height, preset, 'image/jpeg', 0.9, options);
     }
 
-    return this.drawImage(img, preset, 'image/jpeg', 0.9);
+    return this.drawImage(img, preset, 'image/jpeg', 0.9, options);
   }
 
   async gradeFile(file, preset) {
     const img = await loadImage(file);
-    return this.drawImage(img, preset || PRESETS[0], 'image/jpeg', 0.95);
+    return this.drawImage(img, preset || PRESETS[0], 'image/jpeg', 0.95, { grainSeed: 0.5 });
   }
 
   dispose() {
@@ -943,7 +1018,7 @@ function ImageCard({ image, activePresetId, order, onToggle, onOpen, onVisibilit
             onOpen(image.id);
           }
         }}
-        className="relative aspect-[1/1.15] cursor-pointer overflow-hidden bg-[#E9E6DF] transition-transform duration-150"
+        className="relative aspect-[1/1.15] cursor-pointer overflow-hidden bg-[#E9E6DF] transition-transform duration-150 active:scale-[0.985]"
         style={{
           outline: image.selected ? `2px solid ${tokens.accent}` : `0.5px solid ${tokens.line}`,
           outlineOffset: image.selected ? -2 : 0,
@@ -954,7 +1029,7 @@ function ImageCard({ image, activePresetId, order, onToggle, onOpen, onVisibilit
         <div className="pointer-events-none absolute inset-0 bg-black/0" />
         {image.selected && <CornerBrackets />}
         <label
-          className="absolute right-1 top-1 z-10 flex h-[22px] w-[22px] cursor-pointer items-center justify-center bg-black/55"
+          className="absolute right-1 top-1 z-10 flex h-8 w-8 cursor-pointer items-center justify-center bg-black/55"
           onClick={(event) => event.stopPropagation()}
         >
           <input
@@ -962,7 +1037,7 @@ function ImageCard({ image, activePresetId, order, onToggle, onOpen, onVisibilit
             checked={image.selected}
             onChange={(event) => onToggle(image.id, event.target.checked)}
             onClick={(event) => event.stopPropagation()}
-            className="h-3.5 w-3.5 cursor-pointer accent-[#7CC4FF]"
+            className="h-4 w-4 cursor-pointer accent-[#7CC4FF]"
             aria-label={`Select ${image.fileName}`}
           />
         </label>
@@ -1004,7 +1079,7 @@ function UploadDropZone({ onFiles }) {
       }}
       onDragLeave={() => setDragging(false)}
       onDrop={handleDrop}
-      className="mx-[18px] mt-3 flex h-[520px] flex-col items-center justify-center border border-dashed p-6 text-center transition-colors"
+      className="mx-[18px] mt-3 flex min-h-[calc(100dvh-220px)] flex-col items-center justify-center border border-dashed p-6 text-center transition-colors sm:min-h-[520px]"
       style={{
         borderColor: dragging ? tokens.accent : tokens.lineStrong,
         background: dragging ? 'rgba(124,196,255,0.10)' : tokens.soft,
@@ -1110,7 +1185,7 @@ function PresetBar({ activePresetId, onSelectPreset, previews }) {
               type="button"
               aria-pressed={active}
               onClick={() => onSelectPreset(preset.id)}
-              className="min-w-[76px] appearance-none bg-transparent p-0 text-left focus:outline-none focus:ring-2 focus:ring-[#7CC4FF]"
+              className="min-w-[76px] touch-manipulation appearance-none bg-transparent p-0 text-left focus:outline-none focus:ring-2 focus:ring-[#7CC4FF] active:opacity-75"
             >
               <div
                 className="relative h-[48px] overflow-hidden bg-[#E9E6DF]"
@@ -1224,7 +1299,10 @@ function Lightbox({ image, activePreset, hasPrevious, hasNext, onClose, onNaviga
         if (event.target === event.currentTarget) requestClose();
       }}
     >
-      <div className="flex items-center justify-between px-[18px] pb-3 pt-[52px]">
+      <div
+        className="flex items-center justify-between px-[18px] pb-3"
+        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 18px)' }}
+      >
         <button
           ref={closeButtonRef}
           type="button"
@@ -1278,7 +1356,7 @@ function Lightbox({ image, activePreset, hasPrevious, hasNext, onClose, onNaviga
           </button>
         )}
       </div>
-      <div className="px-[18px] pb-12">
+      <div className="px-[18px]" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)' }}>
         <div className="mb-1 flex items-center justify-between gap-3">
           <MonoLabel size={10} color="#F2EFE9" className="min-w-0 truncate">
             {showOriginal ? 'Original' : activePreset?.name || 'Original'}
@@ -1601,7 +1679,7 @@ export default function ColourBatchArtifact() {
   }, [activePreset, getGradingEngine, isExporting, showToast]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#1A1814] p-6 font-['Space_Grotesk',system-ui,-apple-system,sans-serif] text-[#F2EFE9]">
+    <div className="flex min-h-[100dvh] touch-manipulation items-stretch justify-center bg-[#1A1814] font-['Space_Grotesk',system-ui,-apple-system,sans-serif] text-[#F2EFE9] sm:items-center sm:p-6">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600&display=swap');
         @keyframes cb-fade-in {
@@ -1621,78 +1699,76 @@ export default function ColourBatchArtifact() {
           to { opacity: 0; transform: scale(0.985); }
         }
       `}</style>
-      <div className="pointer-events-none fixed left-[22px] top-5 z-[1]">
-        <div className="font-['JetBrains_Mono',ui-monospace,monospace] text-[11px] uppercase tracking-[0.1em] text-[rgba(242,239,233,0.55)]">
-          ColourBatch / v0.1 - build 001
-        </div>
-        <div className="mt-1 font-['JetBrains_Mono',ui-monospace,monospace] text-[9px] uppercase tracking-[0.08em] text-[rgba(242,239,233,0.3)]">
-          iOS prototype - upload proxy grid
-        </div>
-      </div>
 
-      <IOSDevice>
-        <div className="relative min-h-full bg-[#F2EFE9] pb-[100px] text-[#0D0D0C]">
+      <AppShell>
+        <div className="relative flex h-full flex-col bg-[#F2EFE9] text-[#0D0D0C]">
           <Header imagesCount={images.length} selectedCount={selectedCount} onAddMore={openAddMore} />
-          {images.length > 0 && (
-            <PresetBar
-              activePresetId={activePresetId}
-              onSelectPreset={handlePresetSelect}
-              previews={presetPreviews}
+
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-[116px] [-webkit-overflow-scrolling:touch]">
+            {images.length > 0 && (
+              <PresetBar
+                activePresetId={activePresetId}
+                onSelectPreset={handlePresetSelect}
+                previews={presetPreviews}
+              />
+            )}
+            {webglError && (
+              <div className="border-b border-[rgba(13,13,12,0.08)] bg-[#E9E6DF] px-[18px] py-2">
+                <MonoLabel size={9} color={tokens.ink}>
+                  {webglError}
+                </MonoLabel>
+              </div>
+            )}
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+              multiple
+              className="hidden"
+              onChange={(event) => {
+                handleFiles(event.target.files);
+                event.target.value = '';
+              }}
             />
-          )}
-          {webglError && (
-            <div className="border-b border-[rgba(13,13,12,0.08)] bg-[#E9E6DF] px-[18px] py-2">
-              <MonoLabel size={9} color={tokens.ink}>
-                {webglError}
-              </MonoLabel>
-            </div>
-          )}
 
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
-            multiple
-            className="hidden"
-            onChange={(event) => {
-              handleFiles(event.target.files);
-              event.target.value = '';
-            }}
-          />
-
-          {images.length === 0 ? (
-            <UploadDropZone onFiles={handleFiles} />
-          ) : (
-            <div className="px-[18px] pt-3">
-              <div className="flex items-center justify-between pb-3">
-                <MonoLabel size={10} color={tokens.mute}>
-                  SOURCE - CAMERA ROLL
-                </MonoLabel>
-                <MonoLabel
-                  size={10}
-                  color={selectedCount ? tokens.ink : tokens.mute}
-                  className={selectedCount ? 'bg-[#7CC4FF] px-1.5 py-[3px]' : 'px-1.5 py-[3px]'}
-                >
-                  {String(selectedCount).padStart(2, '0')} SELECTED
-                </MonoLabel>
+            {images.length === 0 ? (
+              <UploadDropZone onFiles={handleFiles} />
+            ) : (
+              <div className="px-[18px] pt-3">
+                <div className="flex items-center justify-between pb-3">
+                  <MonoLabel size={10} color={tokens.mute}>
+                    SOURCE - CAMERA ROLL
+                  </MonoLabel>
+                  <MonoLabel
+                    size={10}
+                    color={selectedCount ? tokens.ink : tokens.mute}
+                    className={selectedCount ? 'bg-[#7CC4FF] px-1.5 py-[3px]' : 'px-1.5 py-[3px]'}
+                  >
+                    {String(selectedCount).padStart(2, '0')} SELECTED
+                  </MonoLabel>
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {images.map((image) => (
+                    <ImageCard
+                      key={image.id}
+                      image={image}
+                      activePresetId={activePresetId}
+                      order={selectedOrder.get(image.id) || 0}
+                      onToggle={toggleSelected}
+                      onOpen={setLightboxImageId}
+                      onVisibilityChange={handleVisibilityChange}
+                    />
+                  ))}
+                </div>
               </div>
-              <div className="grid grid-cols-2 gap-1.5">
-                {images.map((image) => (
-                  <ImageCard
-                    key={image.id}
-                    image={image}
-                    activePresetId={activePresetId}
-                    order={selectedOrder.get(image.id) || 0}
-                    onToggle={toggleSelected}
-                    onOpen={setLightboxImageId}
-                    onVisibilityChange={handleVisibilityChange}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
+            )}
+          </div>
 
-          <div className="absolute inset-x-0 bottom-0 border-t border-[rgba(13,13,12,0.12)] bg-[#F2EFE9] px-[18px] pb-[34px] pt-3.5">
+          <div
+            className="absolute inset-x-0 bottom-0 z-30 border-t border-[rgba(13,13,12,0.12)] bg-[#F2EFE9]/95 px-[18px] pt-3.5 backdrop-blur"
+            style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 14px)' }}
+          >
             {isExporting && (
               <MonoLabel size={10} color={tokens.mute} className="mb-2 block">
                 Exporting {exportProgress.current}/{exportProgress.total}...
@@ -1703,7 +1779,7 @@ export default function ColourBatchArtifact() {
                 type="button"
                 onClick={() => handleExport('all')}
                 disabled={!images.length || isExporting}
-                className="flex cursor-not-allowed flex-col items-start bg-[rgba(13,13,12,0.04)] px-3 py-3 text-[#A09A8E] transition-colors enabled:cursor-pointer enabled:bg-[#0D0D0C] enabled:text-[#F2EFE9]"
+                className="flex min-h-[64px] cursor-not-allowed touch-manipulation flex-col items-start bg-[rgba(13,13,12,0.04)] px-3 py-3 text-[#A09A8E] transition enabled:cursor-pointer enabled:bg-[#0D0D0C] enabled:text-[#F2EFE9] enabled:active:scale-[0.98]"
               >
                 <span className="font-['Space_Grotesk',system-ui] text-[15px] font-medium leading-none tracking-normal">
                   Export All
@@ -1716,7 +1792,7 @@ export default function ColourBatchArtifact() {
                 type="button"
                 onClick={() => handleExport('selected')}
                 disabled={!selectedCount || isExporting}
-                className="flex cursor-not-allowed flex-col items-start bg-[rgba(13,13,12,0.04)] px-3 py-3 text-[#A09A8E] transition-colors enabled:cursor-pointer enabled:bg-[#0D0D0C] enabled:text-[#F2EFE9]"
+                className="flex min-h-[64px] cursor-not-allowed touch-manipulation flex-col items-start bg-[rgba(13,13,12,0.04)] px-3 py-3 text-[#A09A8E] transition enabled:cursor-pointer enabled:bg-[#0D0D0C] enabled:text-[#F2EFE9] enabled:active:scale-[0.98]"
               >
                 <span className="font-['Space_Grotesk',system-ui] text-[15px] font-medium leading-none tracking-normal">
                   Export Selected
@@ -1738,7 +1814,7 @@ export default function ColourBatchArtifact() {
             onNavigate={navigateLightbox}
           />
         </div>
-      </IOSDevice>
+      </AppShell>
 
       <div className="sr-only" aria-hidden="true">
         Active preset: {activePresetId}. Export: {isExporting ? 'active' : 'idle'}.
