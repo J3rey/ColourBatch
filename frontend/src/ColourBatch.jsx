@@ -276,6 +276,33 @@ const PRESETS = [
   },
 ];
 
+const PRESET_GROUPS = [
+  {
+    label: 'FILM',
+    presetIds: [
+      'original',
+      'kodak-portra',
+      'cinematic-teal-orange',
+      'cross-process',
+      'faded-vintage',
+      'film-grain-light',
+      'film-grain-heavy',
+    ],
+  },
+  {
+    label: 'CITY',
+    presetIds: ['sunset-film', 'urban-natural', 'matte-brown', 'seoul-soft'],
+  },
+  {
+    label: 'EVERYDAY',
+    presetIds: ['studio-clean', 'natural-boost'],
+  },
+  {
+    label: 'NATURE',
+    presetIds: ['forest-green', 'candlelight-diner'],
+  },
+];
+
 function normalisePreset(preset) {
   const adjustments = preset?.adjustments || {};
   return {
@@ -1133,6 +1160,7 @@ function UploadDropZone({ onFiles }) {
 
 function PresetBar({ activePresetId, onSelectPreset, previews }) {
   const barRef = useRef(null);
+  const presetsById = useMemo(() => new Map(PRESETS.map((preset) => [preset.id, preset])), []);
 
   const focusPreset = useCallback((presetId) => {
     window.requestAnimationFrame(() => {
@@ -1189,41 +1217,55 @@ function PresetBar({ activePresetId, onSelectPreset, previews }) {
         onKeyDown={handleKeyDown}
         className="flex gap-1.5 overflow-x-auto pb-1 focus:outline-none focus:ring-2 focus:ring-[#7CC4FF] focus:ring-offset-2 focus:ring-offset-[#F2EFE9]"
       >
-        {PRESETS.map((preset) => {
-          const active = activePresetId === preset.id;
-          return (
-            <button
-              key={preset.id}
-              data-preset-id={preset.id}
-              type="button"
-              aria-pressed={active}
-              onClick={() => onSelectPreset(preset.id)}
-              className="min-w-[76px] touch-manipulation appearance-none bg-transparent p-0 text-left focus:outline-none focus:ring-2 focus:ring-[#7CC4FF] active:opacity-75"
+        {PRESET_GROUPS.map((group, groupIndex) => (
+          <div key={group.label} className="flex shrink-0 items-start gap-1.5">
+            <div
+              className={`flex h-[70px] min-w-[42px] shrink-0 items-start justify-center border-l border-[rgba(13,13,12,0.12)] px-1.5 pt-0.5 ${groupIndex === 0 ? 'border-l-0 pl-0' : ''}`}
+              aria-hidden="true"
             >
-              <div
-                className="relative h-[48px] overflow-hidden bg-[#E9E6DF]"
-                style={{
-                  outline: active ? `2px solid ${tokens.accent}` : `0.5px solid ${tokens.line}`,
-                  outlineOffset: active ? -2 : 0,
-                }}
-              >
-                {previews[preset.id] ? (
-                  <img src={previews[preset.id]} alt="" className="h-full w-full object-cover" draggable={false} />
-                ) : (
-                  <div className="h-full w-full bg-[linear-gradient(135deg,rgba(13,13,12,0.05),rgba(13,13,12,0.14))]" />
-                )}
-                <div className="absolute bottom-1 left-1 bg-black/55 px-1 py-0.5">
-                  <MonoLabel size={8} color={active ? tokens.accent : '#fff'}>
-                    {preset.category}
-                  </MonoLabel>
-                </div>
-              </div>
-              <MonoLabel size={8} color={active ? tokens.ink : tokens.mute} className="mt-1 block truncate">
-                {preset.name}
+              <MonoLabel size={8} color={tokens.mute} className="[writing-mode:vertical-rl]">
+                {group.label}
               </MonoLabel>
-            </button>
-          );
-        })}
+            </div>
+            {group.presetIds.map((presetId) => {
+              const preset = presetsById.get(presetId);
+              if (!preset) return null;
+              const active = activePresetId === preset.id;
+              return (
+                <button
+                  key={preset.id}
+                  data-preset-id={preset.id}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => onSelectPreset(preset.id)}
+                  className="min-w-[76px] touch-manipulation appearance-none bg-transparent p-0 text-left focus:outline-none focus:ring-2 focus:ring-[#7CC4FF] active:opacity-75"
+                >
+                  <div
+                    className="relative h-[48px] overflow-hidden bg-[#E9E6DF]"
+                    style={{
+                      outline: active ? `2px solid ${tokens.accent}` : `0.5px solid ${tokens.line}`,
+                      outlineOffset: active ? -2 : 0,
+                    }}
+                  >
+                    {previews[preset.id] ? (
+                      <img src={previews[preset.id]} alt="" className="h-full w-full object-cover" draggable={false} />
+                    ) : (
+                      <div className="h-full w-full bg-[linear-gradient(135deg,rgba(13,13,12,0.05),rgba(13,13,12,0.14))]" />
+                    )}
+                    <div className="absolute bottom-1 left-1 bg-black/55 px-1 py-0.5">
+                      <MonoLabel size={8} color={active ? tokens.accent : '#fff'}>
+                        {preset.category}
+                      </MonoLabel>
+                    </div>
+                  </div>
+                  <MonoLabel size={8} color={active ? tokens.ink : tokens.mute} className="mt-1 block truncate">
+                    {preset.name}
+                  </MonoLabel>
+                </button>
+              );
+            })}
+          </div>
+        ))}
       </div>
     </div>
   );
