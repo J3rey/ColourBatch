@@ -1721,6 +1721,7 @@ export default function ColourBatchArtifact() {
     }
 
     const failed = [];
+    const graded = [];
     setIsExporting(true);
     setExportProgress({ current: 0, total: targets.length });
 
@@ -1730,13 +1731,38 @@ export default function ColourBatchArtifact() {
 
       try {
         const dataUrl = await getGradingEngine().gradeFile(image.file, activePreset);
-        downloadDataUrl(dataUrl, makeExportFileName(image.fileName, activePreset.id));
+        const fileName = makeExportFileName(image.fileName, activePreset.id);
+        graded.push({ fileName, blob: dataUrlToBlob(dataUrl), dataUrl });
       } catch (error) {
         console.error(`ColourBatch export failed for ${image.fileName}`, error);
         failed.push(image.fileName);
       } finally {
         setExportProgress({ current: index + 1, total: targets.length });
       }
+    }
+
+    const shareFiles = graded.map(({ fileName, blob }) => new File([blob], fileName, { type: blob.type || 'image/jpeg' }));
+    const canShareFiles = graded.length > 0
+      && typeof navigator !== 'undefined'
+      && typeof navigator.canShare === 'function'
+      && typeof navigator.share === 'function'
+      && navigator.canShare({ files: shareFiles });
+
+    if (canShareFiles) {
+      try {
+        await navigator.share({
+          files: shareFiles,
+          title: 'ColourBatch export',
+          text: `ColourBatch — ${activePreset.name || activePreset.id}`,
+        });
+      } catch (error) {
+        if (error?.name !== 'AbortError') {
+          console.error('ColourBatch share failed, falling back to downloads', error);
+          graded.forEach(({ fileName, dataUrl }) => downloadDataUrl(dataUrl, fileName));
+        }
+      }
+    } else {
+      graded.forEach(({ fileName, dataUrl }) => downloadDataUrl(dataUrl, fileName));
     }
 
     setIsExporting(false);
