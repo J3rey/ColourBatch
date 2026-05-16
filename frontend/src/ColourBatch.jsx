@@ -2,7 +2,10 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 const MAX_IMAGES = 50;
 const MAX_PROXY_SIDE = 1200;
+const MAX_WEBGL_TEXTURES = 20;
+const MAX_CACHED_WEBGL_TEXTURES = MAX_WEBGL_TEXTURES - 1;
 const ACCEPTED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const ACCEPTED_EXTENSIONS = /\.(jpe?g|png|webp)$/i;
 
 const tokens = {
   paper: '#F2EFE9',
@@ -209,6 +212,16 @@ function normalisePreset(preset) {
   };
 }
 
+function isAcceptedImageFile(file) {
+  return ACCEPTED_TYPES.has((file.type || '').toLowerCase()) || ACCEPTED_EXTENSIONS.test(file.name || '');
+}
+
+function releaseImageResources(image) {
+  [image?.proxyDataUrl, image?.gradedDataUrl].forEach((url) => {
+    if (typeof url === 'string' && url.startsWith('blob:')) URL.revokeObjectURL(url);
+  });
+}
+
 function MonoLabel({ children, size = 10, color, className = '' }) {
   return (
     <span
@@ -330,7 +343,11 @@ function Toast({ message }) {
   if (!message) return null;
 
   return (
-    <div className="absolute inset-x-[18px] bottom-[86px] z-40 border border-[rgba(13,13,12,0.18)] bg-[#0D0D0C] px-3 py-2 text-[#F2EFE9] shadow-[0_12px_28px_rgba(0,0,0,0.18)]">
+    <div
+      role="status"
+      aria-live="polite"
+      className="absolute inset-x-[18px] bottom-[86px] z-40 border border-[rgba(13,13,12,0.18)] bg-[#0D0D0C] px-3 py-2 text-[#F2EFE9] shadow-[0_12px_28px_rgba(0,0,0,0.18)]"
+    >
       <MonoLabel size={9} color="#F2EFE9">
         {message}
       </MonoLabel>
@@ -547,7 +564,8 @@ class WebGLGradingEngine {
     this.program = this.createProgram(vertexShader, fragmentShader);
     this.uniforms = this.getUniformLocations();
     this.positionBuffer = gl.createBuffer();
-    this.texture = gl.createTexture();
+    this.textureCache = new Map();
+    this.textureUseCounter = 0;
 
     gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
     gl.bufferData(
@@ -555,12 +573,17 @@ class WebGLGradingEngine {
       new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]),
       gl.STATIC_DRAW,
     );
+  }
 
-    gl.bindTexture(gl.TEXTURE_2D, this.texture);
+  createTexture() {
+    const gl = this.gl;
+    const texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    return texture;
   }
 
   createShader(type, source) {
@@ -629,10 +652,76 @@ class WebGLGradingEngine {
     return img;
   }
 
-  drawImage(img, preset, type = 'image/jpeg', quality = 0.9) {
+  uploadImageToTexture(texture, img) {
     const gl = this.gl;
-    const width = img.naturalWidth || img.width;
-    const height = img.naturalHeight || img.height;
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+  }
+
+  getCachedTexture(cacheKey) {
+    if (!cacheKey) return null;
+    const cached = this.textureCache.get(cacheKey);
+    if (!cached) return null;
+    cached.lastUsed = ++this.textureUseCounter;
+    return cached;
+  }
+
+  cacheTexture(cacheKey, img, protectedKeys = new Set()) {
+    const cached = this.getCachedTexture(cacheKey);
+    if (cached) return cached;
+
+    const texture = this.createTexture();
+    this.uploadImageToTexture(texture, img);
+    const entry = {
+      texture,
+      width: img.naturalWidth || img.width,
+      height: img.naturalHeight || img.height,
+      lastUsed: ++this.textureUseCounter,
+    };
+    this.textureCache.set(cacheKey, entry);
+    this.evictTextures(protectedKeys);
+    return entry;
+  }
+
+  evictTextures(protectedKeys = new Set()) {
+    const gl = this.gl;
+    while (this.textureCache.size > MAX_CACHED_WEBGL_TEXTURES) {
+      let oldestKey = null;
+      let oldestUse = Infinity;
+
+      for (const [key, entry] of this.textureCache.entries()) {
+        if (protectedKeys.has(key)) continue;
+        if (entry.lastUsed < oldestUse) {
+          oldestUse = entry.lastUsed;
+          oldestKey = key;
+        }
+      }
+
+      if (!oldestKey) {
+        for (const [key, entry] of this.textureCache.entries()) {
+          if (entry.lastUsed < oldestUse) {
+            oldestUse = entry.lastUsed;
+            oldestKey = key;
+          }
+        }
+      }
+
+      const entry = this.textureCache.get(oldestKey);
+      if (entry?.texture) gl.deleteTexture(entry.texture);
+      this.textureCache.delete(oldestKey);
+    }
+  }
+
+  releaseTexture(cacheKey) {
+    const entry = this.textureCache.get(cacheKey);
+    if (entry?.texture) this.gl.deleteTexture(entry.texture);
+    this.textureCache.delete(cacheKey);
+  }
+
+  drawTexture(texture, width, height, preset, type = 'image/jpeg', quality = 0.9) {
+    const gl = this.gl;
     const adjustments = normalisePreset(preset || PRESETS[0]);
 
     this.canvas.width = width;
@@ -640,9 +729,7 @@ class WebGLGradingEngine {
     gl.viewport(0, 0, width, height);
     gl.useProgram(this.program);
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, this.texture);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
     this.setUniforms(adjustments);
 
     const position = gl.getAttribLocation(this.program, 'aPosition');
@@ -652,6 +739,20 @@ class WebGLGradingEngine {
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
     return this.canvas.toDataURL(type, quality);
+  }
+
+  drawImage(img, preset, type = 'image/jpeg', quality = 0.9) {
+    const gl = this.gl;
+    const texture = this.createTexture();
+    const width = img.naturalWidth || img.width;
+    const height = img.naturalHeight || img.height;
+
+    try {
+      this.uploadImageToTexture(texture, img);
+      return this.drawTexture(texture, width, height, preset, type, quality);
+    } finally {
+      gl.deleteTexture(texture);
+    }
   }
 
   setUniforms(adjustments) {
@@ -672,16 +773,36 @@ class WebGLGradingEngine {
     gl.uniform1f(this.uniforms.uVignette, adjustments.vignette);
   }
 
-  async grade(dataUrl, preset) {
+  async grade(dataUrl, preset, options = {}) {
     if (!preset || preset.id === 'original') return dataUrl;
 
+    const cached = this.getCachedTexture(options.cacheKey);
+    if (cached) {
+      return this.drawTexture(cached.texture, cached.width, cached.height, preset, 'image/jpeg', 0.9);
+    }
+
     const img = await this.loadDataUrl(dataUrl);
+    if (options.cacheKey) {
+      const entry = this.cacheTexture(options.cacheKey, img, options.protectedKeys);
+      return this.drawTexture(entry.texture, entry.width, entry.height, preset, 'image/jpeg', 0.9);
+    }
+
     return this.drawImage(img, preset, 'image/jpeg', 0.9);
   }
 
   async gradeFile(file, preset) {
     const img = await loadImage(file);
     return this.drawImage(img, preset || PRESETS[0], 'image/jpeg', 0.95);
+  }
+
+  dispose() {
+    const gl = this.gl;
+    for (const entry of this.textureCache.values()) {
+      if (entry.texture) gl.deleteTexture(entry.texture);
+    }
+    this.textureCache.clear();
+    if (this.positionBuffer) gl.deleteBuffer(this.positionBuffer);
+    if (this.program) gl.deleteProgram(this.program);
   }
 }
 
@@ -706,11 +827,16 @@ function downloadDataUrl(dataUrl, fileName) {
   anchor.remove();
 }
 
-function LazyProxyImage({ image, onVisibilityChange }) {
+function LazyProxyImage({ image, activePresetId, onVisibilityChange }) {
   const frameRef = useRef(null);
+  const currentSrcRef = useRef(null);
+  const fadeTimerRef = useRef(null);
   const [visible, setVisible] = useState(false);
-  const [decodedSrc, setDecodedSrc] = useState(null);
-  const displaySrc = image.gradedDataUrl || image.proxyDataUrl;
+  const [currentSrc, setCurrentSrc] = useState(null);
+  const [previousSrc, setPreviousSrc] = useState(null);
+  const displaySrc = activePresetId === 'original'
+    ? image.proxyDataUrl
+    : image.gradedDataUrl || image.proxyDataUrl;
 
   useEffect(() => {
     const node = frameRef.current;
@@ -748,7 +874,14 @@ function LazyProxyImage({ image, onVisibilityChange }) {
     decoder.src = displaySrc;
 
     const markDecoded = () => {
-      if (alive) setDecodedSrc(displaySrc);
+      if (!alive) return;
+      const previous = currentSrcRef.current;
+      if (previous && previous !== displaySrc) setPreviousSrc(previous);
+      currentSrcRef.current = displaySrc;
+      setCurrentSrc(displaySrc);
+
+      if (fadeTimerRef.current) window.clearTimeout(fadeTimerRef.current);
+      fadeTimerRef.current = window.setTimeout(() => setPreviousSrc(null), 220);
     };
 
     if (decoder.decode) decoder.decode().then(markDecoded).catch(markDecoded);
@@ -759,15 +892,30 @@ function LazyProxyImage({ image, onVisibilityChange }) {
     };
   }, [displaySrc, visible]);
 
+  useEffect(() => () => {
+    if (fadeTimerRef.current) window.clearTimeout(fadeTimerRef.current);
+  }, []);
+
   return (
     <div ref={frameRef} className="absolute inset-0 bg-[#E9E6DF]">
-      {decodedSrc ? (
-        <img
-          src={decodedSrc}
-          alt=""
-          className="block h-full w-full object-cover transition-opacity duration-200"
-          draggable={false}
-        />
+      {currentSrc ? (
+        <>
+          {previousSrc && previousSrc !== currentSrc && (
+            <img
+              src={previousSrc}
+              alt=""
+              className="absolute inset-0 block h-full w-full animate-[cb-fade-out_200ms_ease_forwards] object-cover"
+              draggable={false}
+            />
+          )}
+          <img
+            key={currentSrc}
+            src={currentSrc}
+            alt=""
+            className="absolute inset-0 block h-full w-full animate-[cb-fade-in_200ms_ease] object-cover"
+            draggable={false}
+          />
+        </>
       ) : (
         <div className="flex h-full w-full items-end justify-between bg-[linear-gradient(135deg,rgba(13,13,12,0.04),rgba(13,13,12,0.10))] p-1">
           <MonoLabel size={8} color={tokens.mute}>
@@ -782,7 +930,7 @@ function LazyProxyImage({ image, onVisibilityChange }) {
   );
 }
 
-function ImageCard({ image, order, onToggle, onOpen, onVisibilityChange }) {
+function ImageCard({ image, activePresetId, order, onToggle, onOpen, onVisibilityChange }) {
   return (
     <div className="min-w-0">
       <div
@@ -790,7 +938,10 @@ function ImageCard({ image, order, onToggle, onOpen, onVisibilityChange }) {
         tabIndex={0}
         onClick={() => onOpen(image.id)}
         onKeyDown={(event) => {
-          if (event.key === 'Enter' || event.key === ' ') onOpen(image.id);
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            onOpen(image.id);
+          }
         }}
         className="relative aspect-[1/1.15] cursor-pointer overflow-hidden bg-[#E9E6DF] transition-transform duration-150"
         style={{
@@ -799,7 +950,7 @@ function ImageCard({ image, order, onToggle, onOpen, onVisibilityChange }) {
           transform: image.selected ? 'scale(0.97)' : 'scale(1)',
         }}
       >
-        <LazyProxyImage image={image} onVisibilityChange={onVisibilityChange} />
+        <LazyProxyImage image={image} activePresetId={activePresetId} onVisibilityChange={onVisibilityChange} />
         <div className="pointer-events-none absolute inset-0 bg-black/0" />
         {image.selected && <CornerBrackets />}
         <label
@@ -835,6 +986,7 @@ function ImageCard({ image, order, onToggle, onOpen, onVisibilityChange }) {
 
 function UploadDropZone({ onFiles }) {
   const [dragging, setDragging] = useState(false);
+  const inputRef = useRef(null);
 
   const handleDrop = (event) => {
     event.preventDefault();
@@ -844,6 +996,8 @@ function UploadDropZone({ onFiles }) {
 
   return (
     <div
+      role="region"
+      aria-label="Image upload"
       onDragOver={(event) => {
         event.preventDefault();
         setDragging(true);
@@ -860,28 +1014,75 @@ function UploadDropZone({ onFiles }) {
         SOURCE - CAMERA ROLL
       </MonoLabel>
       <div className="mt-5 font-['Space_Grotesk',system-ui] text-[24px] font-medium leading-none tracking-normal text-[#0D0D0C]">
-        Drop images
+        Drop images here
       </div>
       <MonoLabel size={10} color={tokens.mute} className="mt-3 max-w-[240px] leading-5">
-        JPG, JPEG, PNG, WEBP - up to 50 frames
+        Drag multiple JPG, JPEG, PNG, or WEBP files here, or select up to 50 frames.
       </MonoLabel>
-      <label className="mt-8 cursor-pointer bg-[#0D0D0C] px-4 py-3 text-[#F2EFE9] transition-opacity hover:opacity-90">
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        className="mt-8 cursor-pointer bg-[#0D0D0C] px-4 py-3 text-[#F2EFE9] transition-opacity hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[#7CC4FF] focus:ring-offset-2 focus:ring-offset-[#F2EFE9]"
+      >
         <MonoLabel size={10} color={tokens.paper}>
           + SELECT FILES
         </MonoLabel>
-        <input
-          type="file"
-          accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
-          multiple
-          className="hidden"
-          onChange={(event) => onFiles(event.target.files)}
-        />
-      </label>
+      </button>
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+        multiple
+        className="hidden"
+        onChange={(event) => {
+          onFiles(event.target.files);
+          event.target.value = '';
+        }}
+      />
     </div>
   );
 }
 
 function PresetBar({ activePresetId, onSelectPreset, previews }) {
+  const barRef = useRef(null);
+
+  const focusPreset = useCallback((presetId) => {
+    window.requestAnimationFrame(() => {
+      const button = barRef.current?.querySelector(`[data-preset-id="${presetId}"]`);
+      button?.focus();
+      button?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    });
+  }, []);
+
+  const movePreset = useCallback((direction) => {
+    const currentIndex = PRESETS.findIndex((preset) => preset.id === activePresetId);
+    const nextIndex = (currentIndex + direction + PRESETS.length) % PRESETS.length;
+    const nextPresetId = PRESETS[nextIndex].id;
+    onSelectPreset(nextPresetId);
+    focusPreset(nextPresetId);
+  }, [activePresetId, focusPreset, onSelectPreset]);
+
+  const handleKeyDown = useCallback((event) => {
+    if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      movePreset(1);
+    }
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      movePreset(-1);
+    }
+    if (event.key === 'Home') {
+      event.preventDefault();
+      onSelectPreset(PRESETS[0].id);
+      focusPreset(PRESETS[0].id);
+    }
+    if (event.key === 'End') {
+      event.preventDefault();
+      onSelectPreset(PRESETS[PRESETS.length - 1].id);
+      focusPreset(PRESETS[PRESETS.length - 1].id);
+    }
+  }, [focusPreset, movePreset, onSelectPreset]);
+
   return (
     <div className="border-b border-[rgba(13,13,12,0.08)] px-[18px] py-2">
       <div className="mb-2 flex items-center justify-between">
@@ -892,15 +1093,24 @@ function PresetBar({ activePresetId, onSelectPreset, previews }) {
           WEBGL 2
         </MonoLabel>
       </div>
-      <div className="flex gap-1.5 overflow-x-auto pb-1">
+      <div
+        ref={barRef}
+        role="toolbar"
+        aria-label="Preset selector"
+        tabIndex={0}
+        onKeyDown={handleKeyDown}
+        className="flex gap-1.5 overflow-x-auto pb-1 focus:outline-none focus:ring-2 focus:ring-[#7CC4FF] focus:ring-offset-2 focus:ring-offset-[#F2EFE9]"
+      >
         {PRESETS.map((preset) => {
           const active = activePresetId === preset.id;
           return (
             <button
               key={preset.id}
+              data-preset-id={preset.id}
               type="button"
+              aria-pressed={active}
               onClick={() => onSelectPreset(preset.id)}
-              className="min-w-[76px] appearance-none bg-transparent p-0 text-left"
+              className="min-w-[76px] appearance-none bg-transparent p-0 text-left focus:outline-none focus:ring-2 focus:ring-[#7CC4FF]"
             >
               <div
                 className="relative h-[48px] overflow-hidden bg-[#E9E6DF]"
@@ -932,40 +1142,95 @@ function PresetBar({ activePresetId, onSelectPreset, previews }) {
 }
 
 function Lightbox({ image, activePreset, hasPrevious, hasNext, onClose, onNavigate }) {
+  const dialogRef = useRef(null);
+  const closeButtonRef = useRef(null);
+  const closeTimerRef = useRef(null);
   const [showOriginal, setShowOriginal] = useState(false);
+  const [closing, setClosing] = useState(false);
 
   useEffect(() => {
     setShowOriginal(false);
+    setClosing(false);
   }, [image?.id, activePreset?.id]);
+
+  const requestClose = useCallback(() => {
+    setClosing((current) => {
+      if (current) return current;
+      closeTimerRef.current = window.setTimeout(onClose, 180);
+      return true;
+    });
+  }, [onClose]);
 
   useEffect(() => {
     if (!image) return undefined;
 
+    const previouslyFocused = document.activeElement;
+    closeButtonRef.current?.focus();
+
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape') onClose();
-      if (event.key === 'ArrowLeft') onNavigate(-1);
-      if (event.key === 'ArrowRight') onNavigate(1);
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        requestClose();
+      }
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        onNavigate(-1);
+      }
+      if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        onNavigate(1);
+      }
+      if (event.key === 'Tab') {
+        const focusable = dialogRef.current?.querySelectorAll('button:not(:disabled), [tabindex]:not([tabindex="-1"])');
+        const items = Array.from(focusable || []);
+        if (!items.length) return;
+
+        const first = items[0];
+        const last = items[items.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [image, onClose, onNavigate]);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
+      if (previouslyFocused instanceof HTMLElement) previouslyFocused.focus();
+    };
+  }, [image, onNavigate, requestClose]);
 
   if (!image) return null;
 
-  const gradedSrc = activePreset?.id === 'original' ? image.proxyDataUrl : image.gradedDataUrl || image.proxyDataUrl;
+  const gradedSrc = activePreset?.id === 'original' || image.gradedPresetId !== activePreset?.id
+    ? image.proxyDataUrl
+    : image.gradedDataUrl || image.proxyDataUrl;
   const displaySrc = showOriginal ? image.proxyDataUrl : gradedSrc;
   const canCompare = activePreset?.id !== 'original';
 
   return (
     <div
-      className="absolute inset-0 z-50 flex flex-col bg-black"
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Image comparison"
+      className={`absolute inset-0 z-50 flex origin-center flex-col bg-black ${closing ? 'animate-[cb-lightbox-out_180ms_ease-in_forwards]' : 'animate-[cb-lightbox-in_180ms_ease-out]'}`}
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (event.target === event.currentTarget) requestClose();
       }}
     >
       <div className="flex items-center justify-between px-[18px] pb-3 pt-[52px]">
-        <button type="button" onClick={onClose} className="appearance-none bg-transparent p-0 text-left">
+        <button
+          ref={closeButtonRef}
+          type="button"
+          onClick={requestClose}
+          className="appearance-none bg-transparent p-0 text-left focus:outline-none focus:ring-2 focus:ring-[#7CC4FF]"
+        >
           <MonoLabel size={10} color="#F2EFE9">
             CLOSE
           </MonoLabel>
@@ -974,7 +1239,7 @@ function Lightbox({ image, activePreset, hasPrevious, hasNext, onClose, onNaviga
           type="button"
           onClick={() => setShowOriginal((current) => !current)}
           disabled={!canCompare}
-          className="appearance-none bg-transparent p-0 text-right disabled:opacity-35"
+          className="appearance-none bg-transparent p-0 text-right focus:outline-none focus:ring-2 focus:ring-[#7CC4FF] disabled:opacity-35"
         >
           <MonoLabel size={10} color="#F2EFE9">
             {showOriginal ? 'SHOW GRADED' : 'SHOW ORIGINAL'}
@@ -984,14 +1249,14 @@ function Lightbox({ image, activePreset, hasPrevious, hasNext, onClose, onNaviga
       <div
         className="relative flex min-h-0 flex-1 items-center justify-center px-[18px] py-2"
         onMouseDown={(event) => {
-          if (event.target === event.currentTarget) onClose();
+          if (event.target === event.currentTarget) requestClose();
         }}
       >
         {hasPrevious && (
           <button
             type="button"
             onClick={() => onNavigate(-1)}
-            className="absolute left-[18px] top-1/2 z-10 -translate-y-1/2 bg-black/55 px-2 py-2 text-[#F2EFE9]"
+            className="absolute left-[18px] top-1/2 z-10 -translate-y-1/2 bg-black/55 px-2 py-2 text-[#F2EFE9] focus:outline-none focus:ring-2 focus:ring-[#7CC4FF]"
             aria-label="Previous image"
           >
             <MonoLabel size={10} color="#F2EFE9">
@@ -1004,7 +1269,7 @@ function Lightbox({ image, activePreset, hasPrevious, hasNext, onClose, onNaviga
           <button
             type="button"
             onClick={() => onNavigate(1)}
-            className="absolute right-[18px] top-1/2 z-10 -translate-y-1/2 bg-black/55 px-2 py-2 text-[#F2EFE9]"
+            className="absolute right-[18px] top-1/2 z-10 -translate-y-1/2 bg-black/55 px-2 py-2 text-[#F2EFE9] focus:outline-none focus:ring-2 focus:ring-[#7CC4FF]"
             aria-label="Next image"
           >
             <MonoLabel size={10} color="#F2EFE9">
@@ -1037,6 +1302,7 @@ export default function ColourBatchArtifact() {
   const gradingRunRef = useRef(0);
   const previewRunRef = useRef(0);
   const imagesRef = useRef([]);
+  const previousImagesRef = useRef([]);
 
   const [images, setImages] = useState([]);
   const [activePresetId, setActivePresetId] = useState('original');
@@ -1046,6 +1312,7 @@ export default function ColourBatchArtifact() {
   const [visibleImageIds, setVisibleImageIds] = useState(() => new Set());
   const [presetPreviews, setPresetPreviews] = useState({});
   const [toast, setToast] = useState('');
+  const [webglError, setWebglError] = useState('');
 
   const activePreset = useMemo(
     () => PRESETS.find((preset) => preset.id === activePresetId) || PRESETS[0],
@@ -1077,7 +1344,12 @@ export default function ColourBatchArtifact() {
   }, []);
 
   const getGradingEngine = useCallback(() => {
-    if (!gradingEngineRef.current) gradingEngineRef.current = new WebGLGradingEngine();
+    try {
+      if (!gradingEngineRef.current) gradingEngineRef.current = new WebGLGradingEngine();
+    } catch (error) {
+      setWebglError('WebGL 2 is not available. Use Chrome or Firefox for colour grading and export.');
+      throw error;
+    }
     return gradingEngineRef.current;
   }, []);
 
@@ -1088,7 +1360,22 @@ export default function ColourBatchArtifact() {
   useEffect(() => () => {
     gradingRunRef.current += 1;
     previewRunRef.current += 1;
+    imagesRef.current.forEach(releaseImageResources);
+    previousImagesRef.current = [];
+    gradingEngineRef.current?.dispose();
+    gradingEngineRef.current = null;
   }, []);
+
+  useEffect(() => {
+    const currentIds = new Set(images.map((image) => image.id));
+    previousImagesRef.current.forEach((image) => {
+      if (!currentIds.has(image.id)) {
+        releaseImageResources(image);
+        gradingEngineRef.current?.releaseTexture(image.id);
+      }
+    });
+    previousImagesRef.current = images;
+  }, [images]);
 
   useEffect(() => {
     if (!firstProxyDataUrl) {
@@ -1115,6 +1402,7 @@ export default function ColourBatchArtifact() {
           setPresetPreviews((current) => ({ ...current, [preset.id]: preview }));
         }
       } catch {
+        setWebglError('WebGL 2 is not available. Use Chrome or Firefox for colour grading and export.');
         if (previewRunRef.current === runId) showToast('Preset previews could not be generated.');
         return;
       }
@@ -1132,13 +1420,17 @@ export default function ColourBatchArtifact() {
 
   useEffect(() => {
     if (activePresetId === 'original' || visibleImageIds.size === 0) return undefined;
+    if (webglError) return undefined;
 
     let cancelled = false;
     let frameId = 0;
     const timerId = window.setTimeout(() => {
       const runId = gradingRunRef.current + 1;
       gradingRunRef.current = runId;
-      const queue = imagesRef.current.filter((image) => visibleImageIds.has(image.id));
+      const protectedKeys = new Set(visibleImageIds);
+      const queue = imagesRef.current.filter((image) => (
+        visibleImageIds.has(image.id) && image.gradedPresetId !== activePresetId
+      ));
       let index = 0;
 
       const processNext = async () => {
@@ -1148,13 +1440,17 @@ export default function ColourBatchArtifact() {
         if (!image) return;
 
         try {
-          const gradedDataUrl = await getGradingEngine().grade(image.proxyDataUrl, activePreset);
+          const gradedDataUrl = await getGradingEngine().grade(image.proxyDataUrl, activePreset, {
+            cacheKey: image.id,
+            protectedKeys,
+          });
           if (!cancelled && gradingRunRef.current === runId) {
             setImages((current) => current.map((item) => (
-              item.id === image.id ? { ...item, gradedDataUrl } : item
+              item.id === image.id ? { ...item, gradedDataUrl, gradedPresetId: activePresetId } : item
             )));
           }
         } catch {
+          setWebglError('WebGL 2 is not available. Use Chrome or Firefox for colour grading and export.');
           if (!cancelled && gradingRunRef.current === runId) showToast('Colour grading failed in this browser.');
           return;
         }
@@ -1171,17 +1467,17 @@ export default function ColourBatchArtifact() {
       window.clearTimeout(timerId);
       if (frameId) window.cancelAnimationFrame(frameId);
     };
-  }, [activePreset, activePresetId, getGradingEngine, showToast, visibleImageIds]);
+  }, [activePreset, activePresetId, getGradingEngine, showToast, visibleImageIds, webglError]);
 
   const handleFiles = useCallback(async (fileList) => {
     const incoming = Array.from(fileList || []);
     if (!incoming.length) return;
 
-    const accepted = incoming.filter((file) => ACCEPTED_TYPES.has(file.type));
+    const accepted = incoming.filter(isAcceptedImageFile);
     if (accepted.length !== incoming.length) showToast('Only JPG, JPEG, PNG, and WEBP files are supported.');
 
     let filesToAdd = accepted;
-    const remainingSlots = MAX_IMAGES - images.length;
+    const remainingSlots = MAX_IMAGES - imagesRef.current.length;
     if (remainingSlots <= 0) {
       showToast('50 image cap reached.');
       return;
@@ -1201,6 +1497,7 @@ export default function ColourBatchArtifact() {
             fileName: file.name,
             proxyDataUrl: await createProxy(file),
             gradedDataUrl: null,
+            gradedPresetId: null,
             selected: false,
           };
         } catch {
@@ -1214,7 +1511,7 @@ export default function ColourBatchArtifact() {
     }
 
     setImages((current) => [...current, ...processed]);
-  }, [images.length, showToast]);
+  }, [showToast]);
 
   const toggleSelected = useCallback((id, selected) => {
     setImages((current) => current.map((image) => (
@@ -1229,6 +1526,7 @@ export default function ColourBatchArtifact() {
       const next = new Set(current);
       if (isVisible) next.add(id);
       else next.delete(id);
+      gradingEngineRef.current?.evictTextures(next);
       return next;
     });
   }, []);
@@ -1236,12 +1534,11 @@ export default function ColourBatchArtifact() {
   const handlePresetSelect = useCallback((presetId) => {
     setActivePresetId(presetId);
     gradingRunRef.current += 1;
-    setImages((current) => current.map((image) => (
-      image.gradedDataUrl ? { ...image, gradedDataUrl: null } : image
-    )));
   }, []);
 
   const openAddMore = useCallback(() => fileInputRef.current?.click(), []);
+
+  const closeLightbox = useCallback(() => setLightboxImageId(null), []);
 
   const navigateLightbox = useCallback((direction) => {
     const currentImages = imagesRef.current;
@@ -1303,6 +1600,22 @@ export default function ColourBatchArtifact() {
     <div className="flex min-h-screen items-center justify-center bg-[#1A1814] p-6 font-['Space_Grotesk',system-ui,-apple-system,sans-serif] text-[#F2EFE9]">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600&display=swap');
+        @keyframes cb-fade-in {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes cb-fade-out {
+          from { opacity: 1; }
+          to { opacity: 0; }
+        }
+        @keyframes cb-lightbox-in {
+          from { opacity: 0; transform: scale(0.985); }
+          to { opacity: 1; transform: scale(1); }
+        }
+        @keyframes cb-lightbox-out {
+          from { opacity: 1; transform: scale(1); }
+          to { opacity: 0; transform: scale(0.985); }
+        }
       `}</style>
       <div className="pointer-events-none fixed left-[22px] top-5 z-[1]">
         <div className="font-['JetBrains_Mono',ui-monospace,monospace] text-[11px] uppercase tracking-[0.1em] text-[rgba(242,239,233,0.55)]">
@@ -1322,6 +1635,13 @@ export default function ColourBatchArtifact() {
               onSelectPreset={handlePresetSelect}
               previews={presetPreviews}
             />
+          )}
+          {webglError && (
+            <div className="border-b border-[rgba(13,13,12,0.08)] bg-[#E9E6DF] px-[18px] py-2">
+              <MonoLabel size={9} color={tokens.ink}>
+                {webglError}
+              </MonoLabel>
+            </div>
           )}
 
           <input
@@ -1357,6 +1677,7 @@ export default function ColourBatchArtifact() {
                   <ImageCard
                     key={image.id}
                     image={image}
+                    activePresetId={activePresetId}
                     order={selectedOrder.get(image.id) || 0}
                     onToggle={toggleSelected}
                     onOpen={setLightboxImageId}
@@ -1409,7 +1730,7 @@ export default function ColourBatchArtifact() {
             activePreset={activePreset}
             hasPrevious={images.length > 1 && lightboxIndex > -1}
             hasNext={images.length > 1 && lightboxIndex > -1}
-            onClose={() => setLightboxImageId(null)}
+            onClose={closeLightbox}
             onNavigate={navigateLightbox}
           />
         </div>
