@@ -629,6 +629,31 @@ class WebGLGradingEngine {
     return img;
   }
 
+  drawImage(img, preset, type = 'image/jpeg', quality = 0.9) {
+    const gl = this.gl;
+    const width = img.naturalWidth || img.width;
+    const height = img.naturalHeight || img.height;
+    const adjustments = normalisePreset(preset || PRESETS[0]);
+
+    this.canvas.width = width;
+    this.canvas.height = height;
+    gl.viewport(0, 0, width, height);
+    gl.useProgram(this.program);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.texture);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+    this.setUniforms(adjustments);
+
+    const position = gl.getAttribLocation(this.program, 'aPosition');
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
+    gl.enableVertexAttribArray(position);
+    gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+    return this.canvas.toDataURL(type, quality);
+  }
+
   setUniforms(adjustments) {
     const gl = this.gl;
     gl.uniform1i(this.uniforms.uImage, 0);
@@ -651,28 +676,34 @@ class WebGLGradingEngine {
     if (!preset || preset.id === 'original') return dataUrl;
 
     const img = await this.loadDataUrl(dataUrl);
-    const gl = this.gl;
-    const width = img.naturalWidth || img.width;
-    const height = img.naturalHeight || img.height;
-    const adjustments = normalisePreset(preset);
-
-    this.canvas.width = width;
-    this.canvas.height = height;
-    gl.viewport(0, 0, width, height);
-    gl.useProgram(this.program);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, this.texture);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
-    this.setUniforms(adjustments);
-
-    const position = gl.getAttribLocation(this.program, 'aPosition');
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
-    gl.enableVertexAttribArray(position);
-    gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
-    gl.drawArrays(gl.TRIANGLES, 0, 6);
-
-    return this.canvas.toDataURL('image/jpeg', 0.9);
+    return this.drawImage(img, preset, 'image/jpeg', 0.9);
   }
+
+  async gradeFile(file, preset) {
+    const img = await loadImage(file);
+    return this.drawImage(img, preset || PRESETS[0], 'image/jpeg', 0.95);
+  }
+}
+
+function waitForFrame() {
+  return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
+}
+
+function makeExportFileName(fileName, presetId) {
+  const dotIndex = fileName.lastIndexOf('.');
+  const baseName = dotIndex > 0 ? fileName.slice(0, dotIndex) : fileName;
+  const safeBase = baseName.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').trim() || 'colourbatch-export';
+  return `${safeBase}-${presetId || 'original'}.jpg`;
+}
+
+function downloadDataUrl(dataUrl, fileName) {
+  const anchor = document.createElement('a');
+  anchor.href = dataUrl;
+  anchor.download = fileName;
+  anchor.style.display = 'none';
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
 }
 
 function LazyProxyImage({ image, onVisibilityChange }) {
@@ -900,20 +931,92 @@ function PresetBar({ activePresetId, onSelectPreset, previews }) {
   );
 }
 
-function Lightbox({ image, onClose }) {
+function Lightbox({ image, activePreset, hasPrevious, hasNext, onClose, onNavigate }) {
+  const [showOriginal, setShowOriginal] = useState(false);
+
+  useEffect(() => {
+    setShowOriginal(false);
+  }, [image?.id, activePreset?.id]);
+
+  useEffect(() => {
+    if (!image) return undefined;
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') onClose();
+      if (event.key === 'ArrowLeft') onNavigate(-1);
+      if (event.key === 'ArrowRight') onNavigate(1);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [image, onClose, onNavigate]);
+
   if (!image) return null;
 
+  const gradedSrc = activePreset?.id === 'original' ? image.proxyDataUrl : image.gradedDataUrl || image.proxyDataUrl;
+  const displaySrc = showOriginal ? image.proxyDataUrl : gradedSrc;
+  const canCompare = activePreset?.id !== 'original';
+
   return (
-    <div className="absolute inset-0 z-50 flex flex-col bg-black">
-      <button type="button" onClick={onClose} className="px-[18px] pb-3 pt-[52px] text-left">
-        <MonoLabel size={10} color="#F2EFE9">
-          CLOSE
-        </MonoLabel>
-      </button>
-      <div className="flex min-h-0 flex-1 items-center justify-center p-[18px]">
-        <img src={image.gradedDataUrl || image.proxyDataUrl} alt="" className="max-h-full max-w-full object-contain" />
+    <div
+      className="absolute inset-0 z-50 flex flex-col bg-black"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div className="flex items-center justify-between px-[18px] pb-3 pt-[52px]">
+        <button type="button" onClick={onClose} className="appearance-none bg-transparent p-0 text-left">
+          <MonoLabel size={10} color="#F2EFE9">
+            CLOSE
+          </MonoLabel>
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowOriginal((current) => !current)}
+          disabled={!canCompare}
+          className="appearance-none bg-transparent p-0 text-right disabled:opacity-35"
+        >
+          <MonoLabel size={10} color="#F2EFE9">
+            {showOriginal ? 'SHOW GRADED' : 'SHOW ORIGINAL'}
+          </MonoLabel>
+        </button>
+      </div>
+      <div className="relative flex min-h-0 flex-1 items-center justify-center px-[18px] py-2">
+        {hasPrevious && (
+          <button
+            type="button"
+            onClick={() => onNavigate(-1)}
+            className="absolute left-[18px] top-1/2 z-10 -translate-y-1/2 bg-black/55 px-2 py-2 text-[#F2EFE9]"
+            aria-label="Previous image"
+          >
+            <MonoLabel size={10} color="#F2EFE9">
+              PREV
+            </MonoLabel>
+          </button>
+        )}
+        <img src={displaySrc} alt="" className="max-h-full max-w-full object-contain" draggable={false} />
+        {hasNext && (
+          <button
+            type="button"
+            onClick={() => onNavigate(1)}
+            className="absolute right-[18px] top-1/2 z-10 -translate-y-1/2 bg-black/55 px-2 py-2 text-[#F2EFE9]"
+            aria-label="Next image"
+          >
+            <MonoLabel size={10} color="#F2EFE9">
+              NEXT
+            </MonoLabel>
+          </button>
+        )}
       </div>
       <div className="px-[18px] pb-12">
+        <div className="mb-1 flex items-center justify-between gap-3">
+          <MonoLabel size={10} color="#F2EFE9" className="min-w-0 truncate">
+            {showOriginal ? 'Original' : activePreset?.name || 'Original'}
+          </MonoLabel>
+          <MonoLabel size={10} color="rgba(242,239,233,0.65)">
+            {showOriginal ? 'SOURCE' : 'GRADED'}
+          </MonoLabel>
+        </div>
         <MonoLabel size={10} color="rgba(242,239,233,0.65)" className="block truncate">
           {image.fileName}
         </MonoLabel>
@@ -933,8 +1036,8 @@ export default function ColourBatchArtifact() {
   const [images, setImages] = useState([]);
   const [activePresetId, setActivePresetId] = useState('original');
   const [lightboxImageId, setLightboxImageId] = useState(null);
-  const [isExporting] = useState(false);
-  const [exportProgress] = useState({ current: 0, total: 0 });
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState({ current: 0, total: 0 });
   const [visibleImageIds, setVisibleImageIds] = useState(() => new Set());
   const [presetPreviews, setPresetPreviews] = useState({});
   const [toast, setToast] = useState('');
@@ -951,6 +1054,10 @@ export default function ColourBatchArtifact() {
   const firstProxyDataUrl = images[0]?.proxyDataUrl || '';
   const lightboxImage = useMemo(
     () => images.find((image) => image.id === lightboxImageId) || null,
+    [images, lightboxImageId],
+  );
+  const lightboxIndex = useMemo(
+    () => images.findIndex((image) => image.id === lightboxImageId),
     [images, lightboxImageId],
   );
 
@@ -1131,6 +1238,62 @@ export default function ColourBatchArtifact() {
 
   const openAddMore = useCallback(() => fileInputRef.current?.click(), []);
 
+  const navigateLightbox = useCallback((direction) => {
+    const currentImages = imagesRef.current;
+    if (currentImages.length < 2) return;
+
+    const currentIndex = currentImages.findIndex((image) => image.id === lightboxImageId);
+    const nextIndex = currentIndex === -1
+      ? 0
+      : (currentIndex + direction + currentImages.length) % currentImages.length;
+
+    setLightboxImageId(currentImages[nextIndex].id);
+  }, [lightboxImageId]);
+
+  const handleExport = useCallback(async (scope) => {
+    if (isExporting) return;
+
+    const currentImages = imagesRef.current;
+    const targets = scope === 'selected'
+      ? currentImages.filter((image) => image.selected)
+      : currentImages;
+
+    if (!targets.length) {
+      showToast(scope === 'selected' ? 'Select at least one image to export.' : 'No images to export.');
+      return;
+    }
+
+    const failed = [];
+    setIsExporting(true);
+    setExportProgress({ current: 0, total: targets.length });
+
+    for (let index = 0; index < targets.length; index += 1) {
+      const image = targets[index];
+      await waitForFrame();
+
+      try {
+        const dataUrl = await getGradingEngine().gradeFile(image.file, activePreset);
+        downloadDataUrl(dataUrl, makeExportFileName(image.fileName, activePreset.id));
+      } catch (error) {
+        console.error(`ColourBatch export failed for ${image.fileName}`, error);
+        failed.push(image.fileName);
+      } finally {
+        setExportProgress({ current: index + 1, total: targets.length });
+      }
+    }
+
+    setIsExporting(false);
+
+    if (failed.length) {
+      const failedNames = failed.slice(0, 3).join(', ');
+      const suffix = failed.length > 3 ? ` +${failed.length - 3} more` : '';
+      showToast(`Export finished. Failed: ${failedNames}${suffix}`);
+      return;
+    }
+
+    showToast(`Exported ${targets.length} image${targets.length === 1 ? '' : 's'}.`);
+  }, [activePreset, getGradingEngine, isExporting, showToast]);
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#1A1814] p-6 font-['Space_Grotesk',system-ui,-apple-system,sans-serif] text-[#F2EFE9]">
       <style>{`
@@ -1200,22 +1363,50 @@ export default function ColourBatchArtifact() {
           )}
 
           <div className="absolute inset-x-0 bottom-0 border-t border-[rgba(13,13,12,0.12)] bg-[#F2EFE9] px-[18px] pb-[34px] pt-3.5">
-            <button
-              type="button"
-              disabled={!selectedCount || isExporting}
-              className="flex w-full cursor-not-allowed items-center justify-between bg-[rgba(13,13,12,0.04)] px-4 py-3.5 text-[#A09A8E] transition-colors enabled:cursor-pointer enabled:bg-[#0D0D0C] enabled:text-[#F2EFE9]"
-            >
-              <span className="font-['Space_Grotesk',system-ui] text-base font-medium tracking-normal">
-                Stage batch
-              </span>
-              <MonoLabel size={10} color="currentColor" className="opacity-70">
-                {selectedCount ? `READY ${String(selectedCount).padStart(2, '0')}` : 'PICK >= 1'}
+            {isExporting && (
+              <MonoLabel size={10} color={tokens.mute} className="mb-2 block">
+                Exporting {exportProgress.current}/{exportProgress.total}...
               </MonoLabel>
-            </button>
+            )}
+            <div className="grid grid-cols-2 gap-1.5">
+              <button
+                type="button"
+                onClick={() => handleExport('all')}
+                disabled={!images.length || isExporting}
+                className="flex cursor-not-allowed flex-col items-start bg-[rgba(13,13,12,0.04)] px-3 py-3 text-[#A09A8E] transition-colors enabled:cursor-pointer enabled:bg-[#0D0D0C] enabled:text-[#F2EFE9]"
+              >
+                <span className="font-['Space_Grotesk',system-ui] text-[15px] font-medium leading-none tracking-normal">
+                  Export All
+                </span>
+                <MonoLabel size={9} color="currentColor" className="mt-2 opacity-70">
+                  {String(images.length).padStart(2, '0')} FRAMES
+                </MonoLabel>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleExport('selected')}
+                disabled={!selectedCount || isExporting}
+                className="flex cursor-not-allowed flex-col items-start bg-[rgba(13,13,12,0.04)] px-3 py-3 text-[#A09A8E] transition-colors enabled:cursor-pointer enabled:bg-[#0D0D0C] enabled:text-[#F2EFE9]"
+              >
+                <span className="font-['Space_Grotesk',system-ui] text-[15px] font-medium leading-none tracking-normal">
+                  Export Selected
+                </span>
+                <MonoLabel size={9} color="currentColor" className="mt-2 opacity-70">
+                  {selectedCount ? `${String(selectedCount).padStart(2, '0')} READY` : 'PICK >= 1'}
+                </MonoLabel>
+              </button>
+            </div>
           </div>
 
           <Toast message={toast} />
-          <Lightbox image={lightboxImage} onClose={() => setLightboxImageId(null)} />
+          <Lightbox
+            image={lightboxImage}
+            activePreset={activePreset}
+            hasPrevious={images.length > 1 && lightboxIndex > -1}
+            hasNext={images.length > 1 && lightboxIndex > -1}
+            onClose={() => setLightboxImageId(null)}
+            onNavigate={navigateLightbox}
+          />
         </div>
       </IOSDevice>
 
