@@ -1303,6 +1303,7 @@ export default function ColourBatchArtifact() {
   const previewRunRef = useRef(0);
   const imagesRef = useRef([]);
   const previousImagesRef = useRef([]);
+  const visibleImageIdsRef = useRef(new Set());
 
   const [images, setImages] = useState([]);
   const [activePresetId, setActivePresetId] = useState('original');
@@ -1362,6 +1363,7 @@ export default function ColourBatchArtifact() {
     previewRunRef.current += 1;
     imagesRef.current.forEach(releaseImageResources);
     previousImagesRef.current = [];
+    visibleImageIdsRef.current = new Set();
     gradingEngineRef.current?.dispose();
     gradingEngineRef.current = null;
   }, []);
@@ -1520,15 +1522,17 @@ export default function ColourBatchArtifact() {
   }, []);
 
   const handleVisibilityChange = useCallback((id, isVisible) => {
-    setVisibleImageIds((current) => {
-      if (isVisible && current.has(id)) return current;
-      if (!isVisible && !current.has(id)) return current;
-      const next = new Set(current);
-      if (isVisible) next.add(id);
-      else next.delete(id);
-      gradingEngineRef.current?.evictTextures(next);
-      return next;
-    });
+    const current = visibleImageIdsRef.current;
+    if (isVisible && current.has(id)) return;
+    if (!isVisible && !current.has(id)) return;
+
+    const next = new Set(current);
+    if (isVisible) next.add(id);
+    else next.delete(id);
+
+    visibleImageIdsRef.current = next;
+    gradingEngineRef.current?.evictTextures(next);
+    setVisibleImageIds(next);
   }, []);
 
   const handlePresetSelect = useCallback((presetId) => {
