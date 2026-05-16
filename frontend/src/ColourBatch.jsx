@@ -981,7 +981,12 @@ function Lightbox({ image, activePreset, hasPrevious, hasNext, onClose, onNaviga
           </MonoLabel>
         </button>
       </div>
-      <div className="relative flex min-h-0 flex-1 items-center justify-center px-[18px] py-2">
+      <div
+        className="relative flex min-h-0 flex-1 items-center justify-center px-[18px] py-2"
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget) onClose();
+        }}
+      >
         {hasPrevious && (
           <button
             type="button"
