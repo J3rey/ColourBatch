@@ -1256,7 +1256,7 @@ function PresetBar({ activePresetId, onSelectPreset, previews }) {
                   type="button"
                   aria-pressed={active}
                   onClick={() => onSelectPreset(preset.id)}
-                  className="min-w-[76px] touch-manipulation appearance-none bg-transparent p-0 text-left focus:outline-none focus:ring-2 focus:ring-[#7CC4FF] active:opacity-75"
+                  className="w-[76px] shrink-0 touch-manipulation appearance-none bg-transparent p-0 text-left focus:outline-none focus:ring-2 focus:ring-[#7CC4FF] active:opacity-75"
                 >
                   <div
                     className="relative h-[48px] overflow-hidden bg-[#E9E6DF]"
