@@ -933,13 +933,31 @@ function makeExportFileName(fileName, presetId) {
 }
 
 function downloadDataUrl(dataUrl, fileName) {
+  const blob = dataUrlToBlob(dataUrl);
+  const objectUrl = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
-  anchor.href = dataUrl;
+  anchor.href = objectUrl;
   anchor.download = fileName;
   anchor.style.display = 'none';
+  anchor.rel = 'noopener';
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+}
+
+function dataUrlToBlob(dataUrl) {
+  const [header, payload] = dataUrl.split(',');
+  const mimeMatch = header.match(/data:([^;]+)/);
+  const mime = mimeMatch?.[1] || 'image/jpeg';
+  const binary = atob(payload);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return new Blob([bytes], { type: mime });
 }
 
 function LazyProxyImage({ image, activePresetId, onVisibilityChange }) {
@@ -1248,7 +1266,7 @@ function PresetBar({ activePresetId, onSelectPreset, previews }) {
                     }}
                   >
                     {previews[preset.id] ? (
-                      <img src={previews[preset.id]} alt="" className="h-full w-full object-cover" draggable={false} />
+                      <img src={previews[preset.id]} alt="" className="h-full w-full object-contain" draggable={false} />
                     ) : (
                       <div className="h-full w-full bg-[linear-gradient(135deg,rgba(13,13,12,0.05),rgba(13,13,12,0.14))]" />
                     )}
